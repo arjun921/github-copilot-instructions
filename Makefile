@@ -15,7 +15,7 @@ help:
 	@echo "  export   Copy repo instructions to user-level VS Code instructions"
 	@echo "  import   Copy user-level VS Code instructions back into this repo"
 
-## Export: repo → user-level
+## Export: repo → user-level (flattens subdirectories into destination root)
 export:
 	@if [ -z "$(USER_INSTRUCTIONS_DIR)" ]; then \
 		echo "No VS Code instructions directory found. Checked:"; \
@@ -24,11 +24,11 @@ export:
 	fi
 	@echo "Exporting to: $(USER_INSTRUCTIONS_DIR)"
 	@mkdir -p "$(USER_INSTRUCTIONS_DIR)"
-	@cp $(REPO_INSTRUCTIONS_DIR)/*.instructions.md "$(USER_INSTRUCTIONS_DIR)/"
+	@find $(REPO_INSTRUCTIONS_DIR) -name '*.instructions.md' -exec cp {} "$(USER_INSTRUCTIONS_DIR)/" \;
 	@echo "Done. Copied:"
-	@ls $(REPO_INSTRUCTIONS_DIR)/*.instructions.md | xargs -I{} basename {}
+	@find $(REPO_INSTRUCTIONS_DIR) -name '*.instructions.md' -exec basename {} \;
 
-## Import: user-level → repo (diff-aware, per-file)
+## Import: user-level → repo (diff-aware, per-file, resolves subdirectories)
 import:
 	@if [ -z "$(USER_INSTRUCTIONS_DIR)" ]; then \
 		echo "No VS Code instructions directory found. Checked:"; \
@@ -45,14 +45,17 @@ import:
 	imported=0; skipped=0; \
 	for src in $$FILES; do \
 		name=$$(basename "$$src"); \
-		dest="$(REPO_INSTRUCTIONS_DIR)/$$name"; \
+		dest=$$(find "$(REPO_INSTRUCTIONS_DIR)" -name "$$name" -type f 2>/dev/null | head -1); \
+		if [ -z "$$dest" ]; then \
+			dest="$(REPO_INSTRUCTIONS_DIR)/$$name"; \
+		fi; \
 		if [ -f "$$dest" ]; then \
 			if diff -q "$$src" "$$dest" > /dev/null 2>&1; then \
 				echo "  [identical]  $$name — skipping"; \
 				skipped=$$((skipped+1)); \
 			else \
 				echo ""; \
-				echo "  [differs]  $$name"; \
+				echo "  [differs]  $$name → $$dest"; \
 				diff --color=always -u "$$dest" "$$src" | head -40; \
 				echo ""; \
 				printf "  Import $$name into repo? [y/N] "; \
